@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sakura 4K Music Player v3</title>
+    <style>
+      body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #000;
+      }
+      #bg-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-size: cover;
+        background-position: center;
+        transition: background-image 1s ease-in-out;
+        z-index: -1;
+      }
+      #bg-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.3);
+        z-index: 0;
+      }
+      .ui-layer {
+        position: relative;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        color: white;
+      }
+      canvas {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+      .controls {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(15px);
+        padding: 20px 40px;
+        border-radius: 50px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 90vw;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      }
+      button, label {
+        background: none;
+        border: 2px solid white;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: 0.3s;
+        white-space: nowrap;
+      }
+      button:hover, label:hover {
+        background: white;
+        color: black;
+      }
+      select {
+        background: rgba(0,0,0,0.5);
+        color: white;
+        border: 1px solid white;
+        padding: 8px 15px;
+        border-radius: 15px;
+        outline: none;
+      }
+      select option {
+        background: #222;
+        color: white;
+      }
+      input[type="file"] {
+        display: none;
+      }
+      .info {
+        margin-top: 20px;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+        font-size: 1.2rem;
+      }
+
+      /* URL 輸入彈窗 */
+      .modal {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7);
+        z-index: 100;
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      .modal.show { display: flex; }
+      .modal-box {
+        background: rgba(30,30,30,0.95);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 20px;
+        padding: 30px;
+        max-width: 90vw;
+        width: 500px;
+        color: white;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+      }
+      .modal-box h3 {
+        margin: 0 0 15px 0;
+        font-size: 1.3rem;
+      }
+      .modal-box p {
+        margin: 0 0 15px 0;
+        font-size: 0.9rem;
+        opacity: 0.8;
+        line-height: 1.5;
+      }
+      .modal-box input[type="text"] {
+        width: 100%;
+        padding: 12px 15px;
+        background: rgba(0,0,0,0.4);
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 10px;
+        color: white;
+        font-size: 1rem;
+        box-sizing: border-box;
+        outline: none;
+        margin-bottom: 15px;
+      }
+      .modal-box input[type="text"]:focus {
+        border-color: rgba(255,255,255,0.7);
+      }
+      .modal-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+      .modal-actions button {
+        padding: 8px 18px;
+        font-size: 0.9rem;
+      }
+
+      /* 切換指示器 */
+      .bg-status {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 20;
+        background: rgba(0,0,0,0.5);
+        backdrop-filter: blur(10px);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        color: white;
+        opacity: 0;
+        transition: opacity 0.3s;
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bg-status.show { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="bg-container"></div>
+    <div id="bg-overlay"></div>
+
+    <div class="bg-status" id="bg-status"></div>
+
+    <div class="ui-layer">
+      <canvas id="visualizer"></canvas>
+      
+      <div class="controls">
+        <label for="audio-upload">選擇 MP3 檔案</label>
+        <input type="file" id="audio-upload" accept="audio/*" />
+        
+        <button id="play-btn">播放 / 暫停</button>
+        
+        <select id="bg-select">
+          <optgroup label="預設場景（本機圖庫）">
+            <option value="local_random">🎲 隨機輪播全部</option>
+            <option value="local_1">風景 1</option>
+            <option value="local_2">風景 2</option>
+            <option value="local_3">風景 3</option>
+            <option value="local_4">風景 4</option>
+            <option value="local_5">風景 5</option>
+            <option value="local_6">風景 6</option>
+            <option value="local_7">風景 7</option>
+            <option value="local_8">風景 8</option>
+            <option value="local_9">風景 9</option>
+            <option value="local_10">風景 10</option>
+            <option value="local_11">風景 11</option>
+            <option value="local_12">風景 12</option>
+            <option value="local_13">風景 13</option>
+            <option value="local_14">風景 14</option>
+            <option value="local_15">風景 15</option>
+            <option value="local_16">風景 16</option>
+            <option value="local_17">風景 17</option>
+            <option value="local_18">風景 18</option>
+            <option value="local_19">風景 19</option>
+            <option value="local_20">風景 20</option>
+          </optgroup>
+          <optgroup label="自訂背景">
+            <option value="__folder__">📁 自選資料夾</option>
+            <option value="__url__">🌐 網路圖片網址</option>
+          </optgroup>
+        </select>
+
+        <input type="file" id="folder-upload" webkitdirectory directory multiple accept="image/*" />
+      </div>
+      
+      <div class="info" id="track-name">等待播放...</div>
+    </div>
+
+    <!-- URL 輸入彈窗 -->
+    <div class="modal" id="url-modal">
+      <div class="modal-box">
+        <h3>輸入網路圖片網址</h3>
+        <p>可以是單張圖片網址，或用半形逗號(,)或換行分隔多張網址，會自動輪播。</p>
+        <input type="text" id="url-input" placeholder="https://example.com/image.jpg" />
+        <div class="modal-actions">
+          <button id="url-cancel">取消</button>
+          <button id="url-confirm">確認</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById('visualizer');
+      const ctx = canvas.getContext('2d');
+      const audioUpload = document.getElementById('audio-upload');
+      const folderUpload = document.getElementById('folder-upload');
+      const playBtn = document.getElementById('play-btn');
+      const bgSelect = document.getElementById('bg-select');
+      const bgContainer = document.getElementById('bg-container');
+      const trackName = document.getElementById('track-name');
+      const bgStatus = document.getElementById('bg-status');
+      const urlModal = document.getElementById('url-modal');
+      const urlInput = document.getElementById('url-input');
+      const urlCancel = document.getElementById('url-cancel');
+      const urlConfirm = document.getElementById('url-confirm');
+
+      let audioCtx, analyser, source, dataArray, animationId;
+      let rotation = 0;
+      const audio = new Audio();
+
+      // 自訂圖片清單與輪播狀態
+      let customImages = [];      // 圖片網址陣列
+      let customIndex = 0;        // 目前顯示的索引
+      let customTimer = null;     // 輪播定時器
+      let lastPresetValue = 'local_random'; // 記錄最後一次選擇的預設值
+
+      // 初始化 Canvas 大小
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      // 本地 images 資料夾的 20 張圖（注意 13 和 15 和 20 是 .jpeg）
+      const localImages = [
+        'images/nature_1.jpg',
+        'images/nature_2.jpg',
+        'images/nature_3.jpg',
+        'images/nature_4.jpg',
+        'images/nature_5.jpg',
+        'images/nature_6.jpg',
+        'images/nature_7.jpg',
+        'images/nature_8.jpg',
+        'images/nature_9.jpg',
+        'images/nature_10.jpg',
+        'images/nature_11.jpg',
+        'images/nature_12.jpg',
+        'images/nature_13.jpeg',
+        'images/nature_14.jpg',
+        'images/nature_15.jpeg',
+        'images/nature_16.jpg',
+        'images/nature_17.jpg',
+        'images/nature_18.jpg',
+        'images/nature_19.jpg',
+        'images/nature_20.jpeg'
+      ];
+
+      // 顯示狀態提示
+      function showStatus(text, duration = 2500) {
+        bgStatus.textContent = text;
+        bgStatus.classList.add('show');
+        clearTimeout(bgStatus._t);
+        bgStatus._t = setTimeout(() => bgStatus.classList.remove('show'), duration);
+      }
+
+      // 設定背景圖（含失敗回報）
+      function setBgImage(url, onFail) {
+        const img = new Image();
+        img.onload = () => {
+          bgContainer.style.backgroundImage = `url('${url}')`;
+        };
+        img.onerror = () => {
+          showStatus('⚠️ 圖片載入失敗：' + url.slice(0, 60));
+          if (typeof onFail === 'function') onFail();
+        };
+        img.src = url;
+      }
+
+      // 停止自訂輪播
+      function stopCustomRotation() {
+        if (customTimer) {
+          clearInterval(customTimer);
+          customTimer = null;
+        }
+      }
+
+      // 啟動輪播（多張時）
+      function startRotation(images, intervalMs = 8000) {
+        stopCustomRotation();
+        if (!images || images.length === 0) return;
+
+        customImages = images;
+        customIndex = 0;
+        setBgImage(images[0]);
+
+        if (images.length > 1) {
+          customTimer = setInterval(() => {
+            customIndex = (customIndex + 1) % images.length;
+            setBgImage(images[customIndex]);
+          }, intervalMs);
+        }
+      }
+
+      // 套用本機預設場景
+      function applyLocalPreset(value) {
+        stopCustomRotation();
+        if (value === 'local_random') {
+          // 全部隨機輪播
+          const shuffled = [...localImages].sort(() => Math.random() - 0.5);
+          startRotation(shuffled, 8000);
+        } else {
+          // 單張
+          const idx = parseInt(value.replace('local_', ''), 10) - 1;
+          if (idx >= 0 && idx < localImages.length) {
+            customImages = [];
+            setBgImage(localImages[idx]);
+          }
+        }
+      }
+
+      // 背景選擇邏輯
+      bgSelect.addEventListener('change', () => {
+        const val = bgSelect.value;
+
+        if (val === '__folder__') {
+          folderUpload.click();
+          bgSelect.value = lastPresetValue;
+        } else if (val === '__url__') {
+          urlModal.classList.add('show');
+          urlInput.focus();
+          bgSelect.value = lastPresetValue;
+        } else {
+          lastPresetValue = val;
+          applyLocalPreset(val);
+        }
+      });
+
+      // 初始載入：隨機輪播
+      applyLocalPreset(bgSelect.value);
+
+      // 處理資料夾選擇
+      folderUpload.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+        if (files.length === 0) {
+          showStatus('⚠️ 資料夾內找不到圖片');
+          return;
+        }
+        // 釋放舊的 ObjectURL
+        customImages.forEach(u => { if (u && u.startsWith('blob:')) URL.revokeObjectURL(u); });
+        const urls = files.map(f => URL.createObjectURL(f));
+        showStatus(`📁 已載入 ${files.length} 張圖片，每 8 秒自動輪播`);
+        startRotation(urls, 8000);
+        folderUpload.value = '';
+      });
+
+      // URL 彈窗確認
+      urlConfirm.addEventListener('click', () => {
+        const raw = urlInput.value.trim();
+        if (!raw) {
+          urlModal.classList.remove('show');
+          return;
+        }
+        const urls = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        if (urls.length === 0) {
+          urlModal.classList.remove('show');
+          return;
+        }
+        // 釋放舊的 blob URL
+        customImages.forEach(u => { if (u && u.startsWith('blob:')) URL.revokeObjectURL(u); });
+        if (urls.length === 1) {
+          showStatus('🌐 已載入網路圖片');
+        } else {
+          showStatus(`🌐 已載入 ${urls.length} 張網路圖片，輪播中`);
+        }
+        startRotation(urls, 8000);
+        urlModal.classList.remove('show');
+        urlInput.value = '';
+      });
+
+      urlCancel.addEventListener('click', () => {
+        urlModal.classList.remove('show');
+        urlInput.value = '';
+      });
+
+      urlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') urlConfirm.click();
+        if (e.key === 'Escape') urlCancel.click();
+      });
+
+      // 音頻處理邏輯
+      audioUpload.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+          const url = URL.createObjectURL(file);
+          audio.src = url;
+          trackName.innerText = "正在播放: " + file.name;
+          setupAudioContext();
+          audio.play();
+        }
+      });
+
+      function setupAudioContext() {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = audioCtx.createAnalyser();
+          source = audioCtx.createMediaElementSource(audio);
+          source.connect(analyser);
+          analyser.connect(audioCtx.destination);
+          analyser.fftSize = 256;
+          const bufferLength = analyser.frequencyBinCount;
+          dataArray = new Uint8Array(bufferLength);
+          draw();
+        }
+      }
+
+      playBtn.addEventListener('click', () => {
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        if (audio.paused) audio.play();
+        else audio.pause();
+      });
+
+      // ===== 繪製圓形等化器 =====
+      // 配色設計：
+      //   - 色相 (hue) 依「頻率高低」漸變：低音(紅/橙) → 中音(黃/綠) → 高音(藍/紫)
+      //   - 亮度 (lightness) 依「該頻段音量」漸變：音量越大越亮
+      //   - 變動最大的頻段會額外高亮（白色光暈）
+
+      function draw() {
+        animationId = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = 150;
+
+        rotation += 0.005;
+
+        // 找出當前數值最大的頻段索引（用於高亮）
+        let maxIdx = 0;
+        let maxVal = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          if (dataArray[i] > maxVal) {
+            maxVal = dataArray[i];
+            maxIdx = i;
+          }
+        }
+
+        // 繪製動態線條
+        for (let i = 0; i < dataArray.length; i++) {
+          const value = dataArray[i];
+          const percent = value / 255;
+          const barHeight = percent * 100;
+          
+          const angle = ((i / dataArray.length) * Math.PI * 2) + rotation;
+          const xStart = centerX + Math.cos(angle) * radius;
+          const yStart = centerY + Math.sin(angle) * radius;
+          const xEnd = centerX + Math.cos(angle) * (radius + barHeight);
+          const yEnd = centerY + Math.sin(angle) * (radius + barHeight);
+
+          // 色相：頻率漸變 (低音紅 → 高音紫)
+          const hue = (i / dataArray.length) * 300;
+          const saturation = 90;
+          // 亮度：依音量漸變
+          const lightness = 25 + percent * 45;
+          const alpha = 0.35 + percent * 0.55;
+
+          const isPeak = (i === maxIdx && maxVal > 30);
+
+          ctx.beginPath();
+          if (isPeak) {
+            ctx.shadowColor = `hsl(${hue}, 100%, 75%)`;
+            ctx.shadowBlur = 25;
+            ctx.strokeStyle = `hsla(${hue}, 100%, 85%, 1)`;
+            ctx.lineWidth = 5;
+          } else {
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+            ctx.lineWidth = 3;
+          }
+          ctx.lineCap = 'round';
+          ctx.moveTo(xStart, yStart);
+          ctx.lineTo(xEnd, yEnd);
+          ctx.stroke();
+        }
+
+        ctx.shadowBlur = 0;
+
+        // 內圈光暈
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 5;
+        ctx.stroke();
+        
+        // 隨節奏律動的圓心
+        const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        const pulse = (avg / 255) * 20;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius - 10 + pulse, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.fill();
+      }
+    </script>
+  </body>
+</html>
